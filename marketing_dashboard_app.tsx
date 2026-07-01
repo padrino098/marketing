@@ -3692,41 +3692,32 @@ export default function App() {
 
       {/* --- INITIATION FORM MODAL --- */}
       {isCreateModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 font-sans font-sans font-sans">
-          <div className="w-full max-w-lg bg-[#09090d] rounded-2xl border border-zinc-800 p-8 space-y-6 relative animate-in zoom-in-95 shadow-2xl font-sans">
-            <div className="flex items-center justify-between pb-4 border-b border-zinc-800/80 font-sans font-sans font-sans">
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 font-sans">
+          <div className="w-full max-w-4xl bg-[#09090d] rounded-2xl border border-zinc-800 p-8 relative animate-in zoom-in-95 shadow-2xl font-sans">
+            <div className="flex items-center justify-between pb-4 border-b border-zinc-800/80 mb-6">
               <h3 className="text-sm font-extrabold tracking-widest uppercase text-zinc-101 flex items-center gap-2.5 font-mono">
                 <Video className="w-5 h-5 text-zinc-500" />
                 New Entry
               </h3>
-              <button onClick={() => setIsCreateModalOpen(false)} className="text-zinc-500 hover:text-white font-bold font-mono font-sans">✕</button>
+              <button onClick={() => setIsCreateModalOpen(false)} className="text-zinc-500 hover:text-white font-bold font-mono">✕</button>
             </div>
 
-            <form onSubmit={handleCreateProject} className="space-y-5 font-sans">
-              <div className="grid grid-cols-2 gap-5">
-                <div>
-                  <label className="block text-[10px] uppercase font-bold text-zinc-500 tracking-widest mb-1.5 font-mono">Title</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Campaign Title"
-                    value={newTitle}
-                    onChange={(e) => setNewTitle(e.target.value)}
-                    className="w-full bg-[#050507] border border-zinc-800 rounded-lg px-4 py-2.5 text-sm text-zinc-101 font-semibold placeholder-zinc-700 focus:outline-none focus:border-zinc-600 transition-colors shadow-inner"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[10px] uppercase font-bold text-zinc-500 tracking-widest mb-1.5 font-mono">Day Added</label>
-                  <input
-                    type="date"
-                    required
-                    value={newDayAdded}
-                    onChange={(e) => setNewDayAdded(e.target.value)}
-                    className="w-full bg-[#050507] border border-zinc-800 rounded-lg px-4 py-2.5 text-sm text-zinc-101 font-medium focus:outline-none focus:border-zinc-600 font-mono transition-colors shadow-inner font-sans font-sans font-sans font-sans"
-                  />
-                </div>
-              </div>
+            <form onSubmit={handleCreateProject} className="font-sans">
+              {/* Landscape two-column layout */}
+              <div className="grid grid-cols-2 gap-x-8 gap-y-5">
+                {/* LEFT COLUMN */}
+                <div className="space-y-5">
+                  <div>
+                    <label className="block text-[10px] uppercase font-bold text-zinc-500 tracking-widest mb-1.5 font-mono">Title</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Campaign Title"
+                      value={newTitle}
+                      onChange={(e) => setNewTitle(e.target.value)}
+                      className="w-full bg-[#050507] border border-zinc-800 rounded-lg px-4 py-2.5 text-sm text-zinc-101 font-semibold placeholder-zinc-700 focus:outline-none focus:border-zinc-600 transition-colors shadow-inner"
+                    />
+                  </div>
 
               <div>
                 <label className="block text-[10px] uppercase font-bold text-zinc-500 tracking-widest mb-1.5 font-mono">Purpose</label>

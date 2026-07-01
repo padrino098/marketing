@@ -98,4 +98,18 @@ export interface WeekDay {
   label: string;
 }
 
+export type SocialPostStatus = 'Draft' | 'Scheduled' | 'Published' | 'Failed';
+export type SocialPlatform = 'Instagram' | 'Facebook' | 'TikTok' | 'YouTube';
+
+export interface SocialPost {
+  id: string;
+  platform: SocialPlatform;
+  caption: string;
+  scheduledDate: string;   // YYYY-MM-DD
+  scheduledTime: string;   // e.g. "09:00 AM"
+  status: SocialPostStatus;
+  hashtags: string[];
+  projectId?: string;
+}
+
 export type CalendarMode = 'production' | 'socmed' | 'ads';

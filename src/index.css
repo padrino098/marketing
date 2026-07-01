@@ -1,3 +1,64 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Base font — Inter Variable loaded locally via @fontsource-variable/inter */
+:root {
+  font-family: 'Inter Variable', 'Inter', 'SF Pro Display', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  font-feature-settings: 'cv11', 'ss01'; /* Inter: open digits + stylistic alt */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* Light mode — invert the whole page, re-invert media so it looks natural */
+html.light {
+  filter: invert(1) hue-rotate(180deg) contrast(1.1);
+}
+
+/* Restore crisp font rendering that CSS filter compositing degrades */
+html.light body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Muted zinc-500 text (~#71717a) inverts to ~#8e8e85 — too light for small caps/mono labels.
+   Pre-compensate by forcing them lighter pre-inversion so they land darker after the filter. */
+html.light [class*="text-zinc-5"],
+html.light [class*="text-zinc-4"] {
+  color: #b0b0ba !important;
+}
+
+/* Count badge pills (7 Active / 7 Scheduled / 7 Slots Live):
+   bg-zinc-900 and the button bg both invert to near-white, making the pill invisible.
+   Pre-set to a dark gray so the pill inverts to a visible #d4d4d1 light gray container. */
+html.light [class*="text-zinc-3"][class*="bg-zinc-9"][class*="rounded"] {
+  background-color: #333336 !important; /* post-filter ≈ #d4d4d1 — visible light gray pill */
+  border-color: #626262 !important;     /* post-filter ≈ #a0a0a0 — readable medium border  */
+}
+
+/* Small mono labels at 9px (MODE 01, MODE 02 …) render poorly through the filter
+   at sub-pixel sizes — bump them to 10px in light mode only. */
+html.light [class*="text-[9px]"] {
+  font-size: 10px !important;
+  letter-spacing: 0.1em !important;
+}
+
+/* Reduce heavy font weights in light mode.
+   Dark-theme weights (800-900) look blocky on light backgrounds — step them down
+   for a premium, editorial feel while keeping hierarchy intact. */
+html.light .font-black    { font-weight: 500 !important; }
+html.light .font-extrabold{ font-weight: 400 !important; }
+html.light .font-bold     { font-weight: 400 !important; }
+html.light .font-semibold { font-weight: 400 !important; }
+
+/* Uppercase mono labels with wide tracking look like poster print at heavy weights;
+   keep them at 500 so they stay legible but refined. */
+html.light .font-mono.uppercase { font-weight: 500 !important; }
+
+html.light img,
+html.light video,
+html.light iframe,
+html.light canvas {
+  filter: invert(1) hue-rotate(180deg);
+}

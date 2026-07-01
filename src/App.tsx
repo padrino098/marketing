@@ -40,7 +40,12 @@ import {
   Megaphone,
   TrendingUp,
   Activity,
-  CheckCircle
+  CheckCircle,
+  Share2,
+  Send,
+  Hash,
+  Sun,
+  Moon,
 } from 'lucide-react';
 
 import { initializeApp } from 'firebase/app';
@@ -62,11 +67,13 @@ import {
 import {
   STYLING_PRESETS,
   TEAM_ROLES,
+  TEAM_MEMBERS,
   INITIAL_STAGES,
   INITIAL_TYPES,
   INITIAL_CAMPAIGNS,
   INITIAL_PRIORITIES,
   INITIAL_PROJECTS,
+  INITIAL_SOCIAL_POSTS,
   VERTICAL_CALENDAR_HOURS,
 } from '@/data/initialData';
 import { getVideoEmbedInfo } from '@/utils/videoUtils';
@@ -169,7 +176,7 @@ export default function App() {
   const [newCampaign, setNewCampaign] = useState('TMT Activate');
   const [newPriority, setNewPriority] = useState('Medium');
   const [newOverall, setNewOverall] = useState('Ideation');
-  const [newDayAdded, setNewDayAdded] = useState('2026-06-07');
+  const [newDayAdded, setNewDayAdded] = useState(() => new Date().toISOString().slice(0, 10));
   const [newAssignee, setNewAssignee] = useState('');
   const [newBy, setNewBy] = useState('');
   const [newScript, setNewScript] = useState('');
@@ -180,6 +187,34 @@ export default function App() {
 
   const [newChecklistText, setNewChecklistText] = useState('');
   const [newCommentText, setNewCommentText] = useState('');
+  const [inlineEditCell, setInlineEditCell] = useState<{ projId: string; field: string } | null>(null);
+  const [inlineEditValue, setInlineEditValue] = useState('');
+
+  // Social Buffer state
+  const [socialPosts, setSocialPosts] = useState(INITIAL_SOCIAL_POSTS);
+  const [socialPlatformFilter, setSocialPlatformFilter] = useState('All');
+  const [socialWeekDate, setSocialWeekDate] = useState(() => { const d = new Date(); d.setDate(d.getDate() - d.getDay()); return d; });
+  const [isComposerOpen, setIsComposerOpen] = useState(false);
+  const [newPostPlatform, setNewPostPlatform] = useState('Instagram');
+  const [newPostCaption, setNewPostCaption] = useState('');
+  const [newPostDate, setNewPostDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [newPostTime, setNewPostTime] = useState('09:00 AM');
+  const [newPostHashtags, setNewPostHashtags] = useState('');
+  const [newPostStatus, setNewPostStatus] = useState('Draft');
+  const todayStr = new Date().toISOString().slice(0, 10);
+
+  // Theme
+  const [lightMode, setLightMode] = useState(() => localStorage.getItem('theme') === 'light');
+
+  useEffect(() => {
+    if (lightMode) {
+      document.documentElement.classList.add('light');
+      localStorage.setItem('theme', 'light');
+    } else {
+      document.documentElement.classList.remove('light');
+      localStorage.setItem('theme', 'dark');
+    }
+  }, [lightMode]);
   const [toastMessage, setToastMessage] = useState(null);
 
   // AI loading queues
@@ -266,6 +301,49 @@ export default function App() {
     setTimeout(() => {
       setToastMessage(null);
     }, 3000);
+  };
+
+  const handleAddSocialPost = () => {
+    if (!newPostCaption.trim()) { triggerToast('Caption is required.'); return; }
+    const post = {
+      id: 'sp-' + Date.now(),
+      platform: newPostPlatform,
+      caption: newPostCaption.trim(),
+      scheduledDate: newPostDate,
+      scheduledTime: newPostTime,
+      status: newPostStatus,
+      hashtags: newPostHashtags.trim() ? newPostHashtags.trim().split(/\s+/) : [],
+    };
+    setSocialPosts(prev => [...prev, post]);
+    setNewPostCaption('');
+    setNewPostHashtags('');
+    setIsComposerOpen(false);
+    triggerToast('Post added to buffer!');
+  };
+
+  const handleUpdateSocialPost = (id, field, value) => {
+    setSocialPosts(prev => prev.map(p => p.id === id ? { ...p, [field]: value } : p));
+  };
+
+  const handleDeleteSocialPost = (id) => {
+    setSocialPosts(prev => prev.filter(p => p.id !== id));
+    triggerToast('Post removed from buffer.');
+  };
+
+  const handleDuplicateSocialPost = (post) => {
+    const duped = { ...post, id: `sp-${Date.now()}` };
+    setSocialPosts(prev => [...prev, duped]);
+    triggerToast('Post duplicated.');
+  };
+
+  const handleClearPublished = () => {
+    setSocialPosts(prev => prev.filter(p => p.status !== 'Published'));
+    triggerToast('Published posts cleared from buffer.');
+  };
+
+  const handleOpenComposerForDay = (fullDate) => {
+    setNewPostDate(fullDate);
+    setIsComposerOpen(true);
   };
 
   // --- GEMINI LLM INTEGRATION ROUTINES ---
@@ -620,7 +698,7 @@ export default function App() {
     setNewCampaign(campaigns[0]?.name || 'TMT Activate');
     setNewPriority(priorities[0] || 'Medium');
     setNewOverall(stages[0]?.id || 'Ideation'); 
-    setNewDayAdded('2026-06-07'); setNewAssignee('');
+    setNewDayAdded(new Date().toISOString().slice(0, 10)); setNewAssignee('');
     setNewBy(''); setNewScript(''); setNewRaw(''); setNewEdit(''); setNewNotes(''); setNewAdLink('');
   };
 
@@ -824,7 +902,7 @@ export default function App() {
   const toggleCollapse = (catName) => {
     setCollapsedCategories(prev => ({
       ...prev,
-      [catName]: !prev[catName]
+      [catName]: !(prev[catName] ?? true)
     }));
   };
 
@@ -1025,13 +1103,14 @@ export default function App() {
   // --- ROLE-BASED DASHBOARD LOGIC ---
   const myDeskData = useMemo(() => {
     let focusStages = [];
+    let assigneeFilter: string | null = null;
     let roleActionLabel = "Open Project";
     let roleActionIcon = Link2;
     let roleActionLinkProp = null; 
 
     switch(currentRole) {
       case 'Campaign Writer':
-        focusStages = ['Ideation', 'Scripting'];
+        focusStages = ['Ideation', 'Scripting', 'Pre-Prod'];
         roleActionLabel = "Open Script Doc";
         roleActionIcon = PenTool;
         roleActionLinkProp = 'script';
@@ -1042,8 +1121,10 @@ export default function App() {
         roleActionIcon = Film;
         roleActionLinkProp = 'raw';
         break;
-      case 'Video Editor':
+      case 'Video Editor – Ralph':
+      case 'Video Editor – Colin':
         focusStages = ['Editing'];
+        assigneeFilter = currentRole;
         roleActionLabel = "Jump to Frame.io";
         roleActionIcon = Scissors;
         roleActionLinkProp = 'edit';
@@ -1064,7 +1145,11 @@ export default function App() {
         break;
     }
 
-    const activeRoleProjects = projects.filter(p => !p.isArchived && focusStages.includes(p.overall));
+    const activeRoleProjects = projects.filter(p =>
+      !p.isArchived &&
+      focusStages.includes(p.overall) &&
+      (!assigneeFilter || p.assignee === assigneeFilter)
+    );
     
     // Sort so high priority is at top
     activeRoleProjects.sort((a, b) => {
@@ -1120,8 +1205,35 @@ export default function App() {
     };
   }, [projects]);
 
+  const socialWeekDays = useMemo(() => {
+    const d = new Date(socialWeekDate);
+    d.setDate(d.getDate() - d.getDay()); // snap to Sunday
+    const labels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    return Array.from({ length: 7 }, (_, i) => {
+      const date = new Date(d);
+      date.setDate(d.getDate() + i);
+      return { label: labels[date.getDay()], dayNum: date.getDate(), fullDate: date.toISOString().slice(0, 10) };
+    });
+  }, [socialWeekDate]);
+
+  const filteredSocialPosts = useMemo(() => {
+    const posts = socialPlatformFilter === 'All' ? [...socialPosts] : socialPosts.filter(p => p.platform === socialPlatformFilter);
+    return posts.sort((a, b) => {
+      if (a.scheduledDate !== b.scheduledDate) return a.scheduledDate.localeCompare(b.scheduledDate);
+      return a.scheduledTime.localeCompare(b.scheduledTime);
+    });
+  }, [socialPosts, socialPlatformFilter]);
+
+  const socialStats = useMemo(() => ({
+    total: socialPosts.length,
+    draft: socialPosts.filter(p => p.status === 'Draft').length,
+    scheduled: socialPosts.filter(p => p.status === 'Scheduled').length,
+    published: socialPosts.filter(p => p.status === 'Published').length,
+    failed: socialPosts.filter(p => p.status === 'Failed').length,
+  }), [socialPosts]);
+
   return (
-    <div className="min-h-screen bg-[#050507] text-zinc-100 flex flex-col font-sans selection:bg-zinc-800 selection:text-white" style={{ fontFamily: "'Inter', sans-serif" }}>
+    <div className="min-h-screen bg-[#050507] text-zinc-100 flex flex-col font-sans selection:bg-zinc-800 selection:text-white" style={{ fontFamily: "'Inter Variable', 'Inter', 'SF Pro Display', 'Segoe UI', system-ui, sans-serif" }}>
       {/* Global Minimal Scrollbar Styles, Fonts & Form Webkit Resets */}
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap');
@@ -1191,7 +1303,9 @@ export default function App() {
               className="bg-transparent text-xs font-bold tracking-wider text-zinc-200 focus:outline-none cursor-pointer font-mono"
             >
               {TEAM_ROLES.map(role => (
-                <option key={role} value={role}>{role}</option>
+                <option key={role} value={role}>
+                  {TEAM_MEMBERS[role] ? `${TEAM_MEMBERS[role]} · ${role}` : role}
+                </option>
               ))}
             </select>
           </div>
@@ -1204,6 +1318,15 @@ export default function App() {
             <Settings className="w-4 h-4 text-zinc-400" />
           </button>
 
+          {/* Light / Dark mode toggle */}
+          <button
+            onClick={() => setLightMode(v => !v)}
+            className="flex items-center justify-center w-9 h-9 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-zinc-100 hover:border-zinc-700 transition-all"
+            title={lightMode ? 'Switch to Dark Mode' : 'Switch to Light Mode'}
+          >
+            {lightMode ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
+          </button>
+
           {/* View switcher - Redundant Stages tab removed, keeping Board */}
           <div className="flex items-center bg-zinc-900 p-1.5 rounded-xl border border-zinc-800">
             {[
@@ -1211,7 +1334,8 @@ export default function App() {
               { id: 'overview', label: 'Team Overview', icon: Grid },
               { id: 'list', label: 'Grid', icon: List },
               { id: 'board', label: 'Board', icon: Kanban },
-              { id: 'calendar', label: 'Calendar', icon: CalendarIcon }
+              { id: 'calendar', label: 'Calendar', icon: CalendarIcon },
+              { id: 'social', label: 'Social Buffer', icon: Share2 }
             ].map(tab => {
               const IconComponent = tab.icon;
               return (
@@ -1347,14 +1471,17 @@ export default function App() {
       )}
 
       {/* --- MAIN INTERFACE MODULES --- */}
-      <main className="flex-1 p-8 overflow-x-auto relative bg-[#050507]">
+      <main className={`flex-1 overflow-x-auto relative bg-[#050507] ${activeTab === 'list' ? 'p-4' : 'p-8'}`}>
         
         {/* --- MY DESK (ROLE-BASED PROFILE VIEW) --- */}
         {activeTab === 'my-desk' && (
           <div className="space-y-10 max-w-6xl mx-auto animate-in fade-in duration-300">
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-zinc-800/80 pb-8">
                <div>
-                 <h2 className="text-4xl md:text-5xl font-extrabold text-white tracking-tight">Welcome, {currentRole}</h2>
+                 <h2 className="text-4xl md:text-5xl font-extrabold text-white tracking-tight">
+                   Welcome, {TEAM_MEMBERS[currentRole] ? `${TEAM_MEMBERS[currentRole]}` : currentRole}
+                   {TEAM_MEMBERS[currentRole] && <span className="text-zinc-500 text-2xl md:text-3xl font-semibold ml-3">{currentRole}</span>}
+                 </h2>
                  <p className="text-sm text-zinc-400 font-medium mt-3 max-w-2xl leading-relaxed">
                    {currentRole === 'Marketing Head' 
                      ? "Content Velocity & Multi-Format Operational Control. Track real-time distribution across your core marketing channels."
@@ -1827,16 +1954,16 @@ export default function App() {
 
         {/* --- DYNAMIC CAMPAIGN GRID --- */}
         {activeTab === 'list' && (
-          <div className="space-y-8 animate-in fade-in duration-300 font-sans">
+          <div className="space-y-3 animate-in fade-in duration-300 font-sans">
             {types.map((currentType) => {
               const typeProjects = filteredProjects.filter(p => p.type === currentType.name);
-              const isCollapsed = collapsedCategories[currentType.name] || false;
+              const isCollapsed = collapsedCategories[currentType.name] ?? true;
               const typeStyle = typeColorMap[currentType.name] || STYLING_PRESETS.zinc;
               
               return (
                 <div 
                   key={currentType.name} 
-                  className="bg-[#0a0a0f] rounded-2xl border border-zinc-800 p-5 space-y-5 shadow-sm"
+                  className="bg-[#0a0a0f] rounded-xl border border-zinc-800 p-3 space-y-2 shadow-sm"
                 >
                   <div 
                     onClick={() => toggleCollapse(currentType.name)}
@@ -1859,9 +1986,9 @@ export default function App() {
 
                   {!isCollapsed && (
                     <div className="bg-zinc-955 rounded-xl border border-zinc-800 overflow-x-auto shadow-inner">
-                      <div className="min-w-[1700px]">
+                      <div className="min-w-[1300px]">
                         {/* Headers */}
-                        <div className="grid grid-cols-[100px_130px_130px_200px_90px_320px_120px_100px_85px_85px_85px_155px_110px] gap-4 p-4 bg-zinc-900/40 border-b border-zinc-800 text-[11px] uppercase tracking-widest font-extrabold text-zinc-500 font-mono">
+                        <div className="grid grid-cols-[90px_100px_100px_150px_70px_260px_100px_75px_60px_60px_60px_110px_90px] gap-2 py-2 px-3 bg-zinc-900/40 border-b border-zinc-800 text-[10px] uppercase tracking-widest font-extrabold text-zinc-500 font-mono">
                           <div>Day Added</div>
                           <div>Type</div>
                           <div>Campaign</div>
@@ -1880,7 +2007,7 @@ export default function App() {
                         {/* Row items */}
                         <div className="divide-y divide-zinc-800/60 font-sans">
                           {typeProjects.length === 0 ? (
-                            <div className="p-10 text-center text-zinc-500 text-sm font-medium italic font-mono">
+                            <div className="p-5 text-center text-zinc-500 text-xs font-medium italic font-mono">
                               No {currentType.name} tasks scheduled in this layout partition.
                             </div>
                           ) : (
@@ -1891,7 +2018,7 @@ export default function App() {
                               return (
                                 <div 
                                   key={p.id}
-                                  className="grid grid-cols-[100px_130px_130px_200px_90px_320px_120px_100px_85px_85px_85px_155px_110px] gap-4 p-4 items-center hover:bg-zinc-900/50 transition-colors text-sm text-zinc-300"
+                                  className="grid grid-cols-[90px_100px_100px_150px_70px_260px_100px_75px_60px_60px_60px_110px_90px] gap-2 py-1.5 px-3 items-center hover:bg-zinc-900/50 transition-colors text-xs text-zinc-300"
                                 >
                                   {/* 1. Day Added */}
                                   <div className="font-mono font-medium text-zinc-400">
@@ -1972,13 +2099,18 @@ export default function App() {
 
                                   {/* 7. Assignee */}
                                   <div>
-                                    <input 
-                                      type="text" 
-                                      value={p.assignee || ''} 
+                                    <select
+                                      value={p.assignee || ''}
                                       onChange={(e) => handleUpdateField(p.id, 'assignee', e.target.value)}
-                                      placeholder="Unassigned"
                                       className="bg-transparent text-[#e4e4e7] font-medium border-none hover:bg-zinc-800/80 focus:bg-zinc-800 px-2.5 py-1 rounded w-full focus:outline-none truncate transition-colors"
-                                    />
+                                    >
+                                      <option value="">Unassigned</option>
+                                      {TEAM_ROLES.map(role => (
+                                        <option key={role} value={role}>
+                                          {TEAM_MEMBERS[role] ? `${TEAM_MEMBERS[role]} · ${role}` : role}
+                                        </option>
+                                      ))}
+                                    </select>
                                   </div>
 
                                   {/* 8. By */}
@@ -2004,9 +2136,20 @@ export default function App() {
                                         <FileText className="w-3.5 h-3.5 text-zinc-400" />
                                         Script
                                       </a>
+                                    ) : inlineEditCell?.projId === p.id && inlineEditCell?.field === 'script' ? (
+                                      <input
+                                        autoFocus
+                                        type="url"
+                                        value={inlineEditValue}
+                                        onChange={e => setInlineEditValue(e.target.value)}
+                                        onBlur={() => { if (inlineEditValue.trim()) handleUpdateField(p.id, 'script', inlineEditValue.trim()); setInlineEditCell(null); setInlineEditValue(''); }}
+                                        onKeyDown={e => { if (e.key === 'Enter') { if (inlineEditValue.trim()) handleUpdateField(p.id, 'script', inlineEditValue.trim()); setInlineEditCell(null); setInlineEditValue(''); } if (e.key === 'Escape') { setInlineEditCell(null); setInlineEditValue(''); } }}
+                                        placeholder="Paste URL..."
+                                        className="w-full bg-zinc-900 border border-zinc-600 rounded-md px-2 py-1.5 text-[11px] font-mono text-zinc-200 focus:outline-none focus:border-zinc-400 placeholder-zinc-700"
+                                      />
                                     ) : (
                                       <button 
-                                        onClick={() => setSelectedProject(p)}
+                                        onClick={() => { setInlineEditCell({ projId: p.id, field: 'script' }); setInlineEditValue(''); }}
                                         className="text-[11px] font-bold font-mono text-zinc-600 hover:text-zinc-400 w-full text-center py-1.5 border border-dashed border-zinc-700 rounded-md hover:border-zinc-500 transition-colors"
                                       >
                                         + Link
@@ -2026,9 +2169,20 @@ export default function App() {
                                         <Layers className="w-3.5 h-3.5 text-zinc-400" />
                                         Raw
                                       </a>
+                                    ) : inlineEditCell?.projId === p.id && inlineEditCell?.field === 'raw' ? (
+                                      <input
+                                        autoFocus
+                                        type="url"
+                                        value={inlineEditValue}
+                                        onChange={e => setInlineEditValue(e.target.value)}
+                                        onBlur={() => { if (inlineEditValue.trim()) handleUpdateField(p.id, 'raw', inlineEditValue.trim()); setInlineEditCell(null); setInlineEditValue(''); }}
+                                        onKeyDown={e => { if (e.key === 'Enter') { if (inlineEditValue.trim()) handleUpdateField(p.id, 'raw', inlineEditValue.trim()); setInlineEditCell(null); setInlineEditValue(''); } if (e.key === 'Escape') { setInlineEditCell(null); setInlineEditValue(''); } }}
+                                        placeholder="Paste URL..."
+                                        className="w-full bg-zinc-900 border border-zinc-600 rounded-md px-2 py-1.5 text-[11px] font-mono text-zinc-200 focus:outline-none focus:border-zinc-400 placeholder-zinc-700"
+                                      />
                                     ) : (
                                       <button 
-                                        onClick={() => setSelectedProject(p)}
+                                        onClick={() => { setInlineEditCell({ projId: p.id, field: 'raw' }); setInlineEditValue(''); }}
                                         className="text-[11px] font-bold font-mono text-zinc-600 hover:text-zinc-400 w-full text-center py-1.5 border border-dashed border-zinc-700 rounded-md hover:border-zinc-500 transition-colors"
                                       >
                                         + Link
@@ -2048,9 +2202,20 @@ export default function App() {
                                         <ExternalLink className="w-3.5 h-3.5 text-zinc-400" />
                                         Edit
                                       </a>
+                                    ) : inlineEditCell?.projId === p.id && inlineEditCell?.field === 'edit' ? (
+                                      <input
+                                        autoFocus
+                                        type="url"
+                                        value={inlineEditValue}
+                                        onChange={e => setInlineEditValue(e.target.value)}
+                                        onBlur={() => { if (inlineEditValue.trim()) handleUpdateField(p.id, 'edit', inlineEditValue.trim()); setInlineEditCell(null); setInlineEditValue(''); }}
+                                        onKeyDown={e => { if (e.key === 'Enter') { if (inlineEditValue.trim()) handleUpdateField(p.id, 'edit', inlineEditValue.trim()); setInlineEditCell(null); setInlineEditValue(''); } if (e.key === 'Escape') { setInlineEditCell(null); setInlineEditValue(''); } }}
+                                        placeholder="Paste URL..."
+                                        className="w-full bg-zinc-900 border border-zinc-600 rounded-md px-2 py-1.5 text-[11px] font-mono text-zinc-200 focus:outline-none focus:border-zinc-400 placeholder-zinc-700"
+                                      />
                                     ) : (
                                       <button 
-                                        onClick={() => setSelectedProject(p)}
+                                        onClick={() => { setInlineEditCell({ projId: p.id, field: 'edit' }); setInlineEditValue(''); }}
                                         className="text-[11px] font-bold font-mono text-zinc-600 hover:text-zinc-400 w-full text-center py-1.5 border border-dashed border-zinc-700 rounded-md hover:border-zinc-500 transition-colors"
                                       >
                                         + Link
@@ -2736,8 +2901,14 @@ export default function App() {
 
       {/* --- OVERLAY MODALS AND CABINET DRAWERS --- */}
       {selectedProject && (
-        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex justify-end font-sans">
-          <div className="w-full max-w-4xl h-full bg-[#0a0a0f] border-l border-zinc-800 flex flex-col overflow-y-auto p-8 md:p-10 animate-in slide-in-from-right duration-300 shadow-2xl">
+        <div
+          className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex justify-end font-sans"
+          onClick={() => { setSelectedProject(null); setIsPlaying(false); }}
+        >
+          <div
+            className="w-full max-w-4xl h-full bg-[#0a0a0f] border-l border-zinc-800 flex flex-col overflow-y-auto p-8 md:p-10 animate-in slide-in-from-right duration-300 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
             
             <div className="flex items-center justify-between pb-6 border-b border-zinc-800/80 mb-8">
               <div className="flex items-center gap-4">
@@ -2898,12 +3069,18 @@ export default function App() {
                   <div className="grid grid-cols-2 gap-5 font-sans font-sans">
                     <div>
                       <span className="text-[10px] text-zinc-500 font-extrabold uppercase tracking-widest block font-mono mb-1.5">Assignee</span>
-                      <input 
-                        type="text"
+                      <select
                         value={selectedProject.assignee || ''}
                         onChange={(e) => handleUpdateField(selectedProject.id, 'assignee', e.target.value)}
-                        className="bg-transparent border-b border-zinc-700 hover:border-zinc-500 focus:border-zinc-400 focus:outline-none text-zinc-200 font-medium w-full py-1 text-sm transition-colors"
-                      />
+                        className="bg-[#050507] border-b border-zinc-700 hover:border-zinc-500 focus:border-zinc-400 focus:outline-none text-zinc-200 font-medium w-full py-1 text-sm transition-colors"
+                      >
+                        <option value="">Unassigned</option>
+                        {TEAM_ROLES.map(role => (
+                          <option key={role} value={role}>
+                            {TEAM_MEMBERS[role] ? `${TEAM_MEMBERS[role]} · ${role}` : role}
+                          </option>
+                        ))}
+                      </select>
                     </div>
 
                     <div>
@@ -3379,161 +3556,570 @@ export default function App() {
         </div>
       )}
 
+      {/* --- SOCIAL MEDIA BUFFER --- */}
+      {activeTab === 'social' && (
+        <div className="flex-1 p-6 md:p-8 space-y-6 animate-in fade-in duration-300">
+
+          {/* Header */}
+          <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-zinc-800/80 pb-6">
+            <div>
+              <div className="flex items-center gap-2.5 mb-2">
+                <Share2 className="w-5 h-5 text-fuchsia-400" />
+                <h2 className="text-3xl font-extrabold text-white tracking-tight">Social Buffer</h2>
+              </div>
+              <p className="text-sm text-zinc-400 font-medium max-w-lg leading-relaxed">
+                Schedule and manage posts across channels. Days with 3+ active posts are flagged to prevent audience fatigue.
+              </p>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              {socialStats.published > 0 && (
+                <button
+                  onClick={handleClearPublished}
+                  className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-zinc-400 bg-transparent border border-zinc-800 hover:border-red-900/60 hover:text-red-400 rounded-lg transition-all"
+                >
+                  <Trash2 className="w-3.5 h-3.5" /> Clear Published
+                </button>
+              )}
+              <button
+                onClick={() => setIsComposerOpen(v => !v)}
+                className="flex items-center gap-2 px-4 py-2.5 text-xs font-extrabold bg-zinc-100 hover:bg-white text-zinc-950 rounded-lg transition-all tracking-wider shadow-lg"
+              >
+                <Plus className="w-4 h-4" />
+                {isComposerOpen ? 'Close Composer' : 'Schedule Post'}
+              </button>
+            </div>
+          </div>
+
+          {/* KPI Stats */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {[
+              { label: 'Total Posts',  value: socialStats.total,     color: 'text-white',       dot: 'bg-zinc-500' },
+              { label: 'Draft',        value: socialStats.draft,     color: 'text-zinc-400',    dot: 'bg-zinc-600' },
+              { label: 'Scheduled',    value: socialStats.scheduled, color: 'text-blue-400',    dot: 'bg-blue-500' },
+              { label: 'Published',    value: socialStats.published, color: 'text-emerald-400', dot: 'bg-emerald-500' },
+            ].map(stat => (
+              <div key={stat.label} className="bg-[#0a0a0f] border border-zinc-800/80 rounded-xl p-4 hover:border-zinc-700 transition-all group">
+                <div className="flex items-center gap-2 mb-3">
+                  <span className={`w-1.5 h-1.5 rounded-full ${stat.dot}`} />
+                  <span className="text-[10px] font-mono font-bold uppercase tracking-widest text-zinc-500">{stat.label}</span>
+                </div>
+                <span className={`text-3xl font-black ${stat.color}`}>{stat.value}</span>
+              </div>
+            ))}
+          </div>
+
+          {/* Composer */}
+          {isComposerOpen && (
+            <div className="bg-[#0a0a0f] border border-zinc-700/60 rounded-2xl p-6 space-y-5 animate-in slide-in-from-top-2 duration-200 shadow-xl">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xs font-extrabold uppercase tracking-widest text-zinc-300 font-mono flex items-center gap-2">
+                  <Send className="w-3.5 h-3.5 text-fuchsia-400" /> Compose New Post
+                </h3>
+                <button onClick={() => setIsComposerOpen(false)} className="text-zinc-600 hover:text-zinc-300 transition-colors">
+                  <Plus className="w-4 h-4 rotate-45" />
+                </button>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="md:col-span-2">
+                  <label className="text-[10px] font-mono font-bold uppercase tracking-widest text-zinc-500 block mb-1.5">Caption</label>
+                  <textarea
+                    value={newPostCaption}
+                    onChange={e => setNewPostCaption(e.target.value)}
+                    placeholder="Write your post caption..."
+                    rows={3}
+                    className="w-full bg-[#050507] border border-zinc-800 rounded-lg px-3 py-2.5 text-sm text-zinc-300 font-medium focus:outline-none focus:border-zinc-600 resize-none transition-colors"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-mono font-bold uppercase tracking-widest text-zinc-500 block mb-1.5">Platform</label>
+                  <select value={newPostPlatform} onChange={e => setNewPostPlatform(e.target.value)} className="w-full bg-[#050507] border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-300 font-medium focus:outline-none focus:border-zinc-600 cursor-pointer">
+                    {['Instagram', 'Facebook', 'TikTok', 'YouTube'].map(p => <option key={p}>{p}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[10px] font-mono font-bold uppercase tracking-widest text-zinc-500 block mb-1.5">Status</label>
+                  <select value={newPostStatus} onChange={e => setNewPostStatus(e.target.value)} className="w-full bg-[#050507] border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-300 font-medium focus:outline-none focus:border-zinc-600 cursor-pointer">
+                    {['Draft', 'Scheduled'].map(s => <option key={s}>{s}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[10px] font-mono font-bold uppercase tracking-widest text-zinc-500 block mb-1.5">Date</label>
+                  <input type="date" value={newPostDate} onChange={e => setNewPostDate(e.target.value)} className="w-full bg-[#050507] border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-300 font-medium focus:outline-none focus:border-zinc-600" />
+                </div>
+                <div>
+                  <label className="text-[10px] font-mono font-bold uppercase tracking-widest text-zinc-500 block mb-1.5">Time</label>
+                  <input type="text" value={newPostTime} onChange={e => setNewPostTime(e.target.value)} placeholder="09:00 AM" className="w-full bg-[#050507] border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-300 font-medium focus:outline-none focus:border-zinc-600" />
+                </div>
+                <div className="md:col-span-2">
+                  <label className="text-[10px] font-mono font-bold uppercase tracking-widest text-zinc-500 block mb-1.5">
+                    <Hash className="w-3 h-3 inline mr-1" />Hashtags <span className="normal-case text-zinc-600 font-medium">(space-separated)</span>
+                  </label>
+                  <input type="text" value={newPostHashtags} onChange={e => setNewPostHashtags(e.target.value)} placeholder="#marketing #contentcreator #socialmedia" className="w-full bg-[#050507] border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-300 font-medium focus:outline-none focus:border-zinc-600" />
+                </div>
+              </div>
+              <div className="flex items-center justify-between pt-1 border-t border-zinc-800/60">
+                <span className="text-[10px] text-zinc-600 font-mono">Posting to <span className="text-zinc-400 font-bold">{newPostPlatform}</span> on <span className="text-zinc-400 font-bold">{newPostDate}</span></span>
+                <button onClick={handleAddSocialPost} className="flex items-center gap-2 px-5 py-2.5 text-xs font-extrabold bg-zinc-100 hover:bg-white text-zinc-950 rounded-lg tracking-wider transition-all">
+                  <Send className="w-3.5 h-3.5" /> Add to Queue
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Platform Filter — with live counts */}
+          <div className="flex flex-wrap items-center gap-2">
+            {['All', 'Instagram', 'Facebook', 'TikTok', 'YouTube'].map(p => {
+              const count = p === 'All' ? socialPosts.length : socialPosts.filter(s => s.platform === p).length;
+              return (
+                <button key={p} onClick={() => setSocialPlatformFilter(p)}
+                  className={`px-3.5 py-1.5 text-xs font-bold rounded-lg border transition-all flex items-center gap-1.5 ${socialPlatformFilter === p ? 'bg-zinc-200 text-zinc-950 border-zinc-200' : 'bg-transparent text-zinc-400 border-zinc-800 hover:border-zinc-600 hover:text-zinc-200'}`}>
+                  {p}
+                  <span className={`text-[10px] font-mono px-1 rounded ${socialPlatformFilter === p ? 'bg-zinc-400/30 text-zinc-700' : 'bg-zinc-800 text-zinc-500'}`}>{count}</span>
+                </button>
+              );
+            })}
+            <span className="ml-auto text-xs font-mono text-zinc-600">{filteredSocialPosts.length} post{filteredSocialPosts.length !== 1 ? 's' : ''}</span>
+          </div>
+
+          {/* Main: Queue + Week Grid */}
+          <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-6 items-start">
+
+            {/* Queue Panel */}
+            <div className="space-y-3">
+              <h3 className="text-[10px] font-mono font-extrabold uppercase tracking-widest text-zinc-500">Upcoming Queue</h3>
+              <div className="space-y-2 max-h-[640px] overflow-y-auto pr-1">
+                {filteredSocialPosts.length === 0 ? (
+                  <div className="text-center py-12 text-zinc-600 text-sm font-medium border border-dashed border-zinc-800 rounded-xl">No posts in queue</div>
+                ) : filteredSocialPosts.map(post => {
+                  const platDot = { Instagram: 'bg-fuchsia-400', Facebook: 'bg-blue-400', TikTok: 'bg-red-400', YouTube: 'bg-red-500' }[post.platform] || 'bg-zinc-400';
+                  const statusCls = { Draft: 'text-zinc-400 bg-zinc-900 border-zinc-700', Scheduled: 'text-blue-400 bg-blue-950/30 border-blue-900/50', Published: 'text-emerald-400 bg-emerald-950/30 border-emerald-900/50', Failed: 'text-red-400 bg-red-950/30 border-red-900/50' }[post.status] || 'text-zinc-400 bg-zinc-900 border-zinc-700';
+                  return (
+                    <div key={post.id} className="bg-[#0a0a0f] border border-zinc-800 rounded-xl p-3.5 group hover:border-zinc-700 transition-all">
+                      <div className="flex items-start justify-between gap-2 mb-2">
+                        <div className="flex items-center gap-2">
+                          <span className={`w-2 h-2 rounded-full shrink-0 mt-0.5 ${platDot}`} />
+                          <span className="text-[10px] font-mono font-bold text-zinc-500 uppercase tracking-wider">{post.platform}</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <span className={`text-[9px] font-mono font-extrabold uppercase tracking-wider px-2 py-0.5 rounded border ${statusCls}`}>{post.status}</span>
+                          {/* Quick action: copy caption */}
+                          <button
+                            onClick={() => { navigator.clipboard.writeText(post.caption); triggerToast('Caption copied!'); }}
+                            title="Copy caption"
+                            className="opacity-0 group-hover:opacity-100 p-1 text-zinc-600 hover:text-zinc-300 transition-all rounded"
+                          >
+                            <FileText className="w-3 h-3" />
+                          </button>
+                          {/* Quick action: duplicate */}
+                          <button
+                            onClick={() => handleDuplicateSocialPost(post)}
+                            title="Duplicate post"
+                            className="opacity-0 group-hover:opacity-100 p-1 text-zinc-600 hover:text-zinc-300 transition-all rounded"
+                          >
+                            <PlusCircle className="w-3 h-3" />
+                          </button>
+                          {/* Quick action: delete */}
+                          <button
+                            onClick={() => handleDeleteSocialPost(post.id)}
+                            title="Delete post"
+                            className="opacity-0 group-hover:opacity-100 p-1 text-zinc-600 hover:text-red-400 transition-all rounded"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
+                      </div>
+                      <p className="text-xs text-zinc-300 font-medium leading-relaxed line-clamp-2 mb-2">{post.caption}</p>
+                      {post.hashtags.length > 0 && (
+                        <p className="text-[10px] text-fuchsia-400/60 font-mono truncate mb-2">{post.hashtags.slice(0, 4).join(' ')}{post.hashtags.length > 4 ? ' …' : ''}</p>
+                      )}
+                      <div className="flex items-center justify-between pt-2 border-t border-zinc-800/60 gap-2">
+                        <span className="text-[10px] font-mono text-zinc-600 flex items-center gap-1 shrink-0">
+                          <Clock className="w-3 h-3" /> {post.scheduledDate} · {post.scheduledTime}
+                        </span>
+                        <div className="flex items-center gap-1.5 ml-auto">
+                          {/* One-click status shortcuts */}
+                          {post.status === 'Draft' && (
+                            <button
+                              onClick={() => handleUpdateSocialPost(post.id, 'status', 'Scheduled')}
+                              className="text-[9px] font-mono font-bold px-2 py-0.5 rounded bg-blue-950/30 border border-blue-900/40 text-blue-400 hover:bg-blue-900/40 transition-colors"
+                            >→ Schedule</button>
+                          )}
+                          {post.status === 'Scheduled' && (
+                            <button
+                              onClick={() => handleUpdateSocialPost(post.id, 'status', 'Published')}
+                              className="text-[9px] font-mono font-bold px-2 py-0.5 rounded bg-emerald-950/30 border border-emerald-900/40 text-emerald-400 hover:bg-emerald-900/40 transition-colors"
+                            >✓ Publish</button>
+                          )}
+                          <select value={post.status} onChange={e => handleUpdateSocialPost(post.id, 'status', e.target.value)} className="text-[9px] font-mono bg-transparent border-none focus:outline-none text-zinc-500 cursor-pointer">
+                            {['Draft', 'Scheduled', 'Published', 'Failed'].map(s => <option key={s}>{s}</option>)}
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Week Calendar Grid */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-3">
+                <button onClick={() => setSocialWeekDate(prev => new Date(prev.getTime() - 7 * 86400000))} className="p-1.5 rounded-lg bg-zinc-900 border border-zinc-800 hover:border-zinc-600 transition-all">
+                  <ChevronLeft className="w-4 h-4 text-zinc-400" />
+                </button>
+                <span className="text-xs font-mono font-extrabold uppercase tracking-widest text-zinc-300">
+                  {socialWeekDays[0]?.fullDate} — {socialWeekDays[6]?.fullDate}
+                </span>
+                <button onClick={() => setSocialWeekDate(prev => new Date(prev.getTime() + 7 * 86400000))} className="p-1.5 rounded-lg bg-zinc-900 border border-zinc-800 hover:border-zinc-600 transition-all">
+                  <ChevronRight className="w-4 h-4 text-zinc-400" />
+                </button>
+                <button
+                  onClick={() => { const d = new Date(); d.setDate(d.getDate() - d.getDay()); setSocialWeekDate(d); }}
+                  className="ml-2 px-2.5 py-1 text-[10px] font-mono font-bold text-zinc-400 bg-zinc-900 border border-zinc-800 rounded-lg hover:border-zinc-600 transition-all"
+                >
+                  This Week
+                </button>
+              </div>
+
+              <div className="grid grid-cols-7 gap-1.5">
+                {socialWeekDays.map(day => {
+                  const dayPosts = filteredSocialPosts.filter(p => p.scheduledDate === day.fullDate);
+                  const isToday = day.fullDate === todayStr;
+                  const activePosts = dayPosts.filter(p => p.status !== 'Published').length;
+                  const isHigh = activePosts >= 3;
+                  return (
+                    <div key={day.fullDate} className={`min-h-[220px] rounded-xl border p-2 transition-all ${isHigh ? 'border-amber-900/60 bg-amber-950/10' : isToday ? 'border-zinc-600 bg-zinc-900/40' : 'border-zinc-800 bg-[#0a0a0f]'}`}>
+                      <div className={`text-center mb-2 pb-2 border-b ${isHigh ? 'border-amber-900/40' : isToday ? 'border-zinc-700' : 'border-zinc-800'}`}>
+                        <div className={`text-[10px] font-mono font-extrabold uppercase tracking-widest ${isToday ? 'text-zinc-300' : 'text-zinc-500'}`}>{day.label}</div>
+                        <div className={`text-xl font-black ${isToday ? 'text-white' : 'text-zinc-400'}`}>{day.dayNum}</div>
+                        {dayPosts.length > 0 && (
+                          <div className={`text-[9px] font-mono font-bold ${isHigh ? 'text-amber-400' : 'text-zinc-600'}`}>
+                            {dayPosts.length} post{dayPosts.length > 1 ? 's' : ''}{isHigh ? ' ⚠' : ''}
+                          </div>
+                        )}
+                      </div>
+                      <div className="space-y-1">
+                        {dayPosts.map(post => {
+                          const dotColor = { Instagram: 'bg-fuchsia-400', Facebook: 'bg-blue-400', TikTok: 'bg-red-400', YouTube: 'bg-red-500' }[post.platform] || 'bg-zinc-400';
+                          const cardBg = { Draft: 'border-zinc-700/60 bg-zinc-900/30', Scheduled: 'border-blue-900/40 bg-blue-950/20', Published: 'border-emerald-900/40 bg-emerald-950/20', Failed: 'border-red-900/40 bg-red-950/20' }[post.status] || 'border-zinc-700';
+                          return (
+                            <div key={post.id} className={`rounded-lg border px-1.5 py-1 ${cardBg}`}>
+                              <div className="flex items-center gap-1 mb-0.5">
+                                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotColor}`} />
+                                <span className="text-[8px] font-mono font-extrabold uppercase text-zinc-500 truncate">{post.platform.slice(0, 2)}</span>
+                                <span className="text-[8px] font-mono text-zinc-600 ml-auto">{post.scheduledTime.replace(':00 ', '').toLowerCase()}</span>
+                              </div>
+                              <p className="text-[9px] text-zinc-400 font-medium line-clamp-2 leading-tight">{post.caption}</p>
+                            </div>
+                          );
+                        })}
+                        {/* Click empty day area to open composer for that date */}
+                        {dayPosts.length === 0 && (
+                          <button
+                            onClick={() => handleOpenComposerForDay(day.fullDate)}
+                            className="w-full text-center pt-6 pb-2 group/add"
+                          >
+                            <span className="text-[9px] text-zinc-800 font-mono group-hover/add:text-zinc-500 transition-colors">+ add post</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Legend */}
+              <div className="flex flex-wrap items-center gap-4 text-[10px] font-mono text-zinc-600 pt-1">
+                <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-sm bg-zinc-900 border border-zinc-700" /> Draft</span>
+                <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-sm bg-blue-950/40 border border-blue-900/50" /> Scheduled</span>
+                <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-sm bg-emerald-950/40 border border-emerald-900/50" /> Published</span>
+                <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-sm bg-amber-950/20 border border-amber-900/60" /> High volume (3+ active posts)</span>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* --- SETTINGS PANEL --- */}
+      {isSettingsOpen && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 font-sans">
+          <div className="w-full max-w-2xl bg-[#09090d] rounded-2xl border border-zinc-800 p-8 relative animate-in zoom-in-95 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-4 border-b border-zinc-800/80 mb-6">
+              <h3 className="text-sm font-extrabold tracking-widest uppercase text-zinc-200 flex items-center gap-2.5 font-mono">
+                <Settings className="w-4 h-4 text-zinc-500" />
+                Workspace Settings
+              </h3>
+              <button onClick={() => setIsSettingsOpen(false)} className="text-zinc-500 hover:text-white font-bold text-lg">✕</button>
+            </div>
+
+            <div className="space-y-8">
+
+              {/* Types */}
+              <div>
+                <h4 className="text-[10px] uppercase font-extrabold tracking-widest text-zinc-500 font-mono mb-3">Content Types</h4>
+                <div className="flex flex-wrap gap-2 mb-3">
+                  {types.map(t => (
+                    <div key={t.name} className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-semibold ${STYLING_PRESETS[t.colorKey as keyof typeof STYLING_PRESETS]?.classes || 'border-zinc-800 text-zinc-400 bg-zinc-900/30'}`}>
+                      {t.name}
+                      <button onClick={() => handleDeleteType(t.name)} className="ml-1 text-zinc-500 hover:text-red-400 transition-colors font-bold">×</button>
+                    </div>
+                  ))}
+                </div>
+                <form onSubmit={handleAddType} className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="New type name..."
+                    value={newTypeName}
+                    onChange={(e) => setNewTypeName(e.target.value)}
+                    className="flex-1 bg-[#050507] border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-300 placeholder-zinc-600 focus:outline-none focus:border-zinc-600 transition-colors"
+                  />
+                  <select
+                    value={newTypeColor}
+                    onChange={(e) => setNewTypeColor(e.target.value)}
+                    className="bg-[#050507] border border-zinc-800 rounded-lg px-2 py-2 text-xs text-zinc-300 focus:outline-none focus:border-zinc-600 cursor-pointer font-mono"
+                  >
+                    {Object.entries(STYLING_PRESETS).map(([key, val]) => (
+                      <option key={key} value={key}>{val.label}</option>
+                    ))}
+                  </select>
+                  <button type="submit" className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-xs font-extrabold text-zinc-200 rounded-lg border border-zinc-700 font-mono transition-all">ADD</button>
+                </form>
+              </div>
+
+              {/* Campaigns */}
+              <div>
+                <h4 className="text-[10px] uppercase font-extrabold tracking-widest text-zinc-500 font-mono mb-3">Campaigns</h4>
+                <div className="flex flex-wrap gap-2 mb-3">
+                  {campaigns.map(c => (
+                    <div key={c.name} className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-semibold ${STYLING_PRESETS[c.colorKey as keyof typeof STYLING_PRESETS]?.classes || 'border-zinc-800 text-zinc-400 bg-zinc-900/30'}`}>
+                      {c.name}
+                      <button onClick={() => handleDeleteCampaign(c.name)} className="ml-1 text-zinc-500 hover:text-red-400 transition-colors font-bold">×</button>
+                    </div>
+                  ))}
+                </div>
+                <form onSubmit={handleAddCampaign} className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="New campaign name..."
+                    value={newCampaignName}
+                    onChange={(e) => setNewCampaignName(e.target.value)}
+                    className="flex-1 bg-[#050507] border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-300 placeholder-zinc-600 focus:outline-none focus:border-zinc-600 transition-colors"
+                  />
+                  <select
+                    value={newCampaignColor}
+                    onChange={(e) => setNewCampaignColor(e.target.value)}
+                    className="bg-[#050507] border border-zinc-800 rounded-lg px-2 py-2 text-xs text-zinc-300 focus:outline-none focus:border-zinc-600 cursor-pointer font-mono"
+                  >
+                    {Object.entries(STYLING_PRESETS).map(([key, val]) => (
+                      <option key={key} value={key}>{val.label}</option>
+                    ))}
+                  </select>
+                  <button type="submit" className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-xs font-extrabold text-zinc-200 rounded-lg border border-zinc-700 font-mono transition-all">ADD</button>
+                </form>
+              </div>
+
+              {/* Stages */}
+              <div>
+                <h4 className="text-[10px] uppercase font-extrabold tracking-widest text-zinc-500 font-mono mb-3">Pipeline Stages</h4>
+                <div className="flex flex-wrap gap-2 mb-3">
+                  {stages.map(s => (
+                    <div key={s.id} className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-semibold ${STYLING_PRESETS[s.colorKey as keyof typeof STYLING_PRESETS]?.classes || 'border-zinc-800 text-zinc-400 bg-zinc-900/30'}`}>
+                      {s.name}
+                      <button onClick={() => handleDeleteStage(s.id)} className="ml-1 text-zinc-500 hover:text-red-400 transition-colors font-bold">×</button>
+                    </div>
+                  ))}
+                </div>
+                <form onSubmit={handleAddStage} className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="New stage name..."
+                    value={newStageName}
+                    onChange={(e) => setNewStageName(e.target.value)}
+                    className="flex-1 bg-[#050507] border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-300 placeholder-zinc-600 focus:outline-none focus:border-zinc-600 transition-colors"
+                  />
+                  <select
+                    value={newStageColor}
+                    onChange={(e) => setNewStageColor(e.target.value)}
+                    className="bg-[#050507] border border-zinc-800 rounded-lg px-2 py-2 text-xs text-zinc-300 focus:outline-none focus:border-zinc-600 cursor-pointer font-mono"
+                  >
+                    {Object.entries(STYLING_PRESETS).map(([key, val]) => (
+                      <option key={key} value={key}>{val.label}</option>
+                    ))}
+                  </select>
+                  <button type="submit" className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-xs font-extrabold text-zinc-200 rounded-lg border border-zinc-700 font-mono transition-all">ADD</button>
+                </form>
+              </div>
+
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* --- INITIATION FORM MODAL --- */}
       {isCreateModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 font-sans font-sans font-sans">
-          <div className="w-full max-w-lg bg-[#09090d] rounded-2xl border border-zinc-800 p-8 space-y-6 relative animate-in zoom-in-95 shadow-2xl font-sans">
-            <div className="flex items-center justify-between pb-4 border-b border-zinc-800/80 font-sans font-sans font-sans">
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 font-sans">
+          <div className="w-full max-w-4xl bg-[#09090d] rounded-2xl border border-zinc-800 p-8 relative animate-in zoom-in-95 shadow-2xl font-sans">
+            <div className="flex items-center justify-between pb-4 border-b border-zinc-800/80 mb-6">
               <h3 className="text-sm font-extrabold tracking-widest uppercase text-zinc-101 flex items-center gap-2.5 font-mono">
                 <Video className="w-5 h-5 text-zinc-500" />
                 New Entry
               </h3>
-              <button onClick={() => setIsCreateModalOpen(false)} className="text-zinc-500 hover:text-white font-bold font-mono font-sans">✕</button>
+              <button onClick={() => setIsCreateModalOpen(false)} className="text-zinc-500 hover:text-white font-bold font-mono">✕</button>
             </div>
 
-            <form onSubmit={handleCreateProject} className="space-y-5 font-sans">
-              <div className="grid grid-cols-2 gap-5">
-                <div>
-                  <label className="block text-[10px] uppercase font-bold text-zinc-500 tracking-widest mb-1.5 font-mono">Title</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Campaign Title"
-                    value={newTitle}
-                    onChange={(e) => setNewTitle(e.target.value)}
-                    className="w-full bg-[#050507] border border-zinc-800 rounded-lg px-4 py-2.5 text-sm text-zinc-101 font-semibold placeholder-zinc-700 focus:outline-none focus:border-zinc-600 transition-colors shadow-inner"
-                  />
+            <form onSubmit={handleCreateProject} className="font-sans">
+              {/* Landscape two-column layout */}
+              <div className="grid grid-cols-2 gap-x-8 gap-y-5">
+                {/* LEFT COLUMN */}
+                <div className="space-y-5">
+                  <div>
+                    <label className="block text-[10px] uppercase font-bold text-zinc-500 tracking-widest mb-1.5 font-mono">Title</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Campaign Title"
+                      value={newTitle}
+                      onChange={(e) => setNewTitle(e.target.value)}
+                      className="w-full bg-[#050507] border border-zinc-800 rounded-lg px-4 py-2.5 text-sm text-zinc-101 font-semibold placeholder-zinc-700 focus:outline-none focus:border-zinc-600 transition-colors shadow-inner"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] uppercase font-bold text-zinc-500 tracking-widest mb-1.5 font-mono">Purpose</label>
+                    <textarea
+                      rows={3}
+                      placeholder="Campaign focus scope..."
+                      value={newPurpose}
+                      onChange={(e) => setNewPurpose(e.target.value)}
+                      className="w-full bg-[#050507] border border-zinc-800 rounded-lg p-4 text-sm text-zinc-101 font-medium placeholder-zinc-700 focus:outline-none focus:border-zinc-600 resize-none transition-colors shadow-inner"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-[10px] uppercase font-bold text-zinc-500 tracking-widest mb-1.5 font-mono">Type Format</label>
+                      <select
+                        value={newType}
+                        onChange={(e) => setNewType(e.target.value)}
+                        className="w-full bg-[#050507] border border-zinc-800 rounded-lg px-3 py-2.5 text-sm font-semibold text-zinc-300 focus:outline-none focus:border-zinc-600 cursor-pointer font-mono transition-colors"
+                      >
+                        {types.map(t => (
+                          <option key={t.name || ''} value={t.name || ''} className="bg-zinc-950">{t.name || ''}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] uppercase font-bold text-zinc-500 tracking-widest mb-1.5 font-mono">Priority</label>
+                      <select
+                        value={newPriority}
+                        onChange={(e) => setNewPriority(e.target.value)}
+                        className="w-full bg-[#050507] border border-zinc-800 rounded-lg px-3 py-2.5 text-sm font-bold text-zinc-300 focus:outline-none focus:border-zinc-600 cursor-pointer font-sans"
+                      >
+                        {priorities.map(prio => (
+                          <option key={prio || ''} value={prio || ''} className="bg-[#09090e] text-zinc-300 font-sans">{prio || ''}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-[10px] uppercase font-bold text-zinc-500 tracking-widest mb-1.5 font-mono">Assignee</label>
+                      <select
+                        value={newAssignee}
+                        onChange={(e) => setNewAssignee(e.target.value)}
+                        className="w-full bg-[#050507] border border-zinc-800 rounded-lg px-4 py-2 text-sm text-zinc-300 font-medium focus:outline-none focus:border-zinc-600 transition-colors shadow-inner"
+                      >
+                        <option value="">Unassigned</option>
+                        {TEAM_ROLES.map(role => (
+                          <option key={role} value={role}>
+                            {TEAM_MEMBERS[role] ? `${TEAM_MEMBERS[role]} · ${role}` : role}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] uppercase font-bold text-zinc-500 tracking-widest mb-1.5 font-mono">Requested By</label>
+                      <input
+                        type="text"
+                        placeholder="Requester name"
+                        value={newBy}
+                        onChange={(e) => setNewBy(e.target.value)}
+                        className="w-full bg-[#050507] border border-zinc-800 rounded-lg px-4 py-2 text-sm text-zinc-300 font-medium focus:outline-none focus:border-zinc-600 transition-colors shadow-inner"
+                      />
+                    </div>
+                  </div>
                 </div>
 
-                <div>
-                  <label className="block text-[10px] uppercase font-bold text-zinc-500 tracking-widest mb-1.5 font-mono">Day Added</label>
-                  <input
-                    type="date"
-                    required
-                    value={newDayAdded}
-                    onChange={(e) => setNewDayAdded(e.target.value)}
-                    className="w-full bg-[#050507] border border-zinc-800 rounded-lg px-4 py-2.5 text-sm text-zinc-101 font-medium focus:outline-none focus:border-zinc-600 font-mono transition-colors shadow-inner font-sans font-sans font-sans font-sans"
-                  />
+                {/* RIGHT COLUMN */}
+                <div className="space-y-5">
+                  <div>
+                    <label className="block text-[10px] uppercase font-bold text-zinc-500 tracking-widest mb-1.5 font-mono">Day Added</label>
+                    <input
+                      type="date"
+                      required
+                      value={newDayAdded}
+                      onChange={(e) => setNewDayAdded(e.target.value)}
+                      className="w-full bg-[#050507] border border-zinc-800 rounded-lg px-4 py-2.5 text-sm text-zinc-101 font-medium focus:outline-none focus:border-zinc-600 font-mono transition-colors shadow-inner"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-[10px] uppercase font-bold text-zinc-500 tracking-widest mb-1.5 font-mono">Campaign</label>
+                      <select
+                        value={newCampaign}
+                        onChange={(e) => setNewCampaign(e.target.value)}
+                        className="w-full bg-[#050507] border border-zinc-800 rounded-lg px-3 py-2.5 text-sm font-semibold text-zinc-300 focus:outline-none focus:border-zinc-600 cursor-pointer font-mono transition-colors"
+                      >
+                        {campaigns.map(c => (
+                          <option key={c.name || ''} value={c.name || ''} className="bg-zinc-950">{c.name || ''}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] uppercase font-bold text-zinc-500 tracking-widest mb-1.5 font-mono">Stage</label>
+                      <select
+                        value={newOverall}
+                        onChange={(e) => setNewOverall(e.target.value)}
+                        className="w-full bg-[#050507] border border-zinc-800 rounded-lg px-3 py-2.5 text-sm font-semibold text-zinc-300 focus:outline-none focus:border-zinc-600 cursor-pointer font-mono transition-colors"
+                      >
+                        {stages.map(s => (
+                          <option key={s.id || ''} value={s.id || ''} className="bg-zinc-950">{s.name || ''}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-[10px] uppercase font-bold text-zinc-500 tracking-widest mb-1.5 font-mono">Script Link</label>
+                      <input type="url" placeholder="https://docs.goo..." value={newScript} onChange={(e) => setNewScript(e.target.value)} className="w-full bg-[#050507] border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-300 focus:outline-none focus:border-zinc-600 transition-colors shadow-inner" />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] uppercase font-bold text-zinc-500 tracking-widest mb-1.5 font-mono">Raw Assets</label>
+                      <input type="url" placeholder="https://dropbox..." value={newRaw} onChange={(e) => setNewRaw(e.target.value)} className="w-full bg-[#050507] border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-300 focus:outline-none focus:border-zinc-600 transition-colors shadow-inner" />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] uppercase font-bold text-zinc-500 tracking-widest mb-1.5 font-mono">Edit / Review</label>
+                      <input type="url" placeholder="https://frame.io..." value={newEdit} onChange={(e) => setNewEdit(e.target.value)} className="w-full bg-[#050507] border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-300 focus:outline-none focus:border-zinc-600 transition-colors shadow-inner" />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] uppercase font-bold text-zinc-500 tracking-widest mb-1.5 font-mono">Ad Link</label>
+                    <input type="url" placeholder="https://business.facebook.com/..." value={newAdLink} onChange={(e) => setNewAdLink(e.target.value)} className="w-full bg-[#050507] border border-zinc-800 rounded-lg px-4 py-2 text-sm text-zinc-300 focus:outline-none focus:border-zinc-600 transition-colors shadow-inner" />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] uppercase font-bold text-zinc-500 tracking-widest mb-1.5 font-mono">Notes</label>
+                    <textarea rows={2} placeholder="Production notes, grading targets, copy direction..." value={newNotes} onChange={(e) => setNewNotes(e.target.value)} className="w-full bg-[#050507] border border-zinc-800 rounded-lg p-4 text-sm text-zinc-300 placeholder-zinc-700 focus:outline-none focus:border-zinc-600 resize-none transition-colors shadow-inner" />
+                  </div>
                 </div>
               </div>
 
-              <div>
-                <label className="block text-[10px] uppercase font-bold text-zinc-500 tracking-widest mb-1.5 font-mono">Purpose</label>
-                <textarea
-                  rows="2"
-                  placeholder="Campaign focus scope..."
-                  value={newPurpose}
-                  onChange={(e) => setNewPurpose(e.target.value)}
-                  className="w-full bg-[#050507] border border-zinc-800 rounded-lg p-4 text-sm text-zinc-101 font-medium placeholder-zinc-700 focus:outline-none focus:border-zinc-600 resize-none transition-colors shadow-inner font-sans font-sans"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-5">
-                <div>
-                  <label className="block text-[10px] uppercase font-bold text-zinc-500 tracking-widest mb-1.5 font-mono font-sans font-bold">Type Format</label>
-                  <select
-                    value={newType}
-                    onChange={(e) => setNewType(e.target.value)}
-                    className="w-full bg-[#050507] border border-zinc-800 rounded-lg px-3 py-2.5 text-sm font-semibold text-zinc-300 focus:outline-none focus:border-zinc-600 cursor-pointer font-mono transition-colors"
-                  >
-                    {types.map(t => (
-                      <option key={t.name || ''} value={t.name || ''} className="bg-zinc-950">{t.name || ''}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-[10px] uppercase font-bold text-zinc-500 tracking-widest mb-1.5 font-mono">Priority</label>
-                  <select
-                    value={newPriority}
-                    onChange={(e) => setNewPriority(e.target.value)}
-                    className="w-full bg-[#050507] border border-zinc-800 rounded-lg px-3 py-2.5 text-sm font-bold text-zinc-300 focus:outline-none focus:border-zinc-600 cursor-pointer font-sans"
-                  >
-                    {priorities.map(prio => (
-                      <option key={prio || ''} value={prio || ''} className="bg-[#09090e] text-zinc-300 font-sans">{prio || ''}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-5">
-                <div>
-                  <label className="block text-[10px] uppercase font-bold text-zinc-500 tracking-widest mb-1.5 font-mono font-sans font-bold">Assignee</label>
-                  <input
-                    type="text"
-                    placeholder="Creator name"
-                    value={newAssignee}
-                    onChange={(e) => setNewAssignee(e.target.value)}
-                    className="w-full bg-[#050507] border border-zinc-800 rounded-lg px-4 py-2 text-sm text-zinc-300 font-medium focus:outline-none focus:border-zinc-600 transition-colors shadow-inner"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[10px] uppercase font-bold text-zinc-500 tracking-widest mb-1.5 font-mono">Requested By</label>
-                  <input
-                    type="text"
-                    placeholder="Requester name"
-                    value={newBy}
-                    onChange={(e) => setNewBy(e.target.value)}
-                    className="w-full bg-[#050507] border border-zinc-800 rounded-lg px-4 py-2 text-sm text-zinc-300 font-medium focus:outline-none focus:border-zinc-600 transition-colors shadow-inner"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-5">
-                <div>
-                  <label className="block text-[10px] uppercase font-bold text-zinc-500 tracking-widest mb-1.5 font-mono">Campaign</label>
-                  <select
-                    value={newCampaign}
-                    onChange={(e) => setNewCampaign(e.target.value)}
-                    className="w-full bg-[#050507] border border-zinc-800 rounded-lg px-3 py-2.5 text-sm font-semibold text-zinc-300 focus:outline-none focus:border-zinc-600 cursor-pointer font-mono transition-colors"
-                  >
-                    {campaigns.map(c => (
-                      <option key={c.name || ''} value={c.name || ''} className="bg-zinc-950">{c.name || ''}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-[10px] uppercase font-bold text-zinc-500 tracking-widest mb-1.5 font-mono">Stage</label>
-                  <select
-                    value={newOverall}
-                    onChange={(e) => setNewOverall(e.target.value)}
-                    className="w-full bg-[#050507] border border-zinc-800 rounded-lg px-3 py-2.5 text-sm font-semibold text-zinc-300 focus:outline-none focus:border-zinc-600 cursor-pointer font-mono transition-colors"
-                  >
-                    {stages.map(s => (
-                      <option key={s.id || ''} value={s.id || ''} className="bg-zinc-950">{s.name || ''}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-5">
-                <div>
-                  <label className="block text-[10px] uppercase font-bold text-zinc-500 tracking-widest mb-1.5 font-mono">Script Link</label>
-                  <input type="url" placeholder="https://docs.google.com/..." value={newScript} onChange={(e) => setNewScript(e.target.value)} className="w-full bg-[#050507] border border-zinc-800 rounded-lg px-4 py-2 text-sm text-zinc-300 focus:outline-none focus:border-zinc-600 transition-colors shadow-inner" />
-                </div>
-                <div>
-                  <label className="block text-[10px] uppercase font-bold text-zinc-500 tracking-widest mb-1.5 font-mono">Raw Assets</label>
-                  <input type="url" placeholder="https://dropbox.com/..." value={newRaw} onChange={(e) => setNewRaw(e.target.value)} className="w-full bg-[#050507] border border-zinc-800 rounded-lg px-4 py-2 text-sm text-zinc-300 focus:outline-none focus:border-zinc-600 transition-colors shadow-inner" />
-                </div>
-                <div>
-                  <label className="block text-[10px] uppercase font-bold text-zinc-500 tracking-widest mb-1.5 font-mono">Edit / Review</label>
-                  <input type="url" placeholder="https://frame.io/..." value={newEdit} onChange={(e) => setNewEdit(e.target.value)} className="w-full bg-[#050507] border border-zinc-800 rounded-lg px-4 py-2 text-sm text-zinc-300 focus:outline-none focus:border-zinc-600 transition-colors shadow-inner" />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-[10px] uppercase font-bold text-zinc-500 tracking-widest mb-1.5 font-mono">Ad Link</label>
-                <input type="url" placeholder="https://business.facebook.com/..." value={newAdLink} onChange={(e) => setNewAdLink(e.target.value)} className="w-full bg-[#050507] border border-zinc-800 rounded-lg px-4 py-2 text-sm text-zinc-300 focus:outline-none focus:border-zinc-600 transition-colors shadow-inner" />
-              </div>
-
-              <div>
-                <label className="block text-[10px] uppercase font-bold text-zinc-500 tracking-widest mb-1.5 font-mono">Notes</label>
-                <textarea rows={2} placeholder="Production notes, grading targets, copy direction..." value={newNotes} onChange={(e) => setNewNotes(e.target.value)} className="w-full bg-[#050507] border border-zinc-800 rounded-lg p-4 text-sm text-zinc-300 placeholder-zinc-700 focus:outline-none focus:border-zinc-600 resize-none transition-colors shadow-inner" />
-              </div>
-
-              <button type="submit" className="w-full py-3 bg-zinc-100 hover:bg-white text-zinc-950 font-extrabold rounded-xl tracking-wider text-sm transition-all shadow-lg">
+              <button type="submit" className="w-full mt-6 py-3 bg-zinc-100 hover:bg-white text-zinc-950 font-extrabold rounded-xl tracking-wider text-sm transition-all shadow-lg">
                 + ADD TO PIPELINE
               </button>
             </form>
